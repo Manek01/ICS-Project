@@ -96,11 +96,7 @@ Displays:
 ##  Author
 
 **Manek Yadav**
-**Pankaj Lomror**
-**Sonakshi**
-**Bhagyashree**
-**Dev Yadav**
-**Shiv Kumar Meena**
+
 ---
 
 ##  Future Improvements
