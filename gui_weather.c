@@ -22,6 +22,8 @@ typedef struct {
     double tempC;
     int humidity;
     double windKph;
+    int isDay;
+    int conditionCode;
     char condition[80];
     char error[160];
     int valid;
@@ -39,6 +41,7 @@ typedef enum {
 
 typedef struct {
     ThemeKind kind;
+    int isNightVisual;
     SDL_Color top;
     SDL_Color bottom;
     SDL_Color card;
@@ -82,11 +85,75 @@ static int contains_ci(const char *haystack, const char *needle) {
     return 0;
 }
 
+static SDL_Color shade_color(SDL_Color c, float factor) {
+    SDL_Color out;
+    if (factor < 0.0f) {
+        factor = 0.0f;
+    }
+    out.r = (Uint8)fminf(255.0f, c.r * factor);
+    out.g = (Uint8)fminf(255.0f, c.g * factor);
+    out.b = (Uint8)fminf(255.0f, c.b * factor);
+    out.a = c.a;
+    return out;
+}
+
+static ThemeKind theme_from_condition_code(int code, const char *conditionText) {
+    switch (code) {
+        case 1000:
+            return THEME_CLEAR;
+
+        case 1001:
+            return THEME_CLOUDY;
+
+        case 1002:
+            return THEME_MIST;
+
+        case 1003:
+            return THEME_RAIN;
+
+        case 1004:
+            return THEME_SNOW;
+
+        case 1005:
+            return THEME_RAIN;
+
+        case 1006:
+            return THEME_STORM;
+
+        default:
+            break;
+    }
+
+    if (contains_ci(conditionText, "thunder") || contains_ci(conditionText, "storm")) {
+        return THEME_STORM;
+    }
+    if (contains_ci(conditionText, "snow") || contains_ci(conditionText, "blizzard")) {
+        return THEME_SNOW;
+    }
+    if (contains_ci(conditionText, "rain") || contains_ci(conditionText, "drizzle")) {
+        return THEME_RAIN;
+    }
+    if (contains_ci(conditionText, "mist") || contains_ci(conditionText, "fog") ||
+        contains_ci(conditionText, "haze")) {
+        return THEME_MIST;
+    }
+    if (contains_ci(conditionText, "cloud") || contains_ci(conditionText, "overcast")) {
+        return THEME_CLOUDY;
+    }
+
+    return THEME_CLEAR;
+}
+
 static Theme choose_theme(const WeatherData *w) {
     Theme t;
     const char *condition = (w->valid ? w->condition : "");
+    int isNight = (w->valid && w->isDay == 0);
+    ThemeKind mappedKind = w->valid
+                               ? theme_from_condition_code(w->conditionCode, condition)
+                               : THEME_CLEAR;
 
-    t.kind = THEME_CLEAR;
+    t.kind = mappedKind;
+    t.isNightVisual = isNight;
     t.top = (SDL_Color){31, 98, 177, 255};
     t.bottom = (SDL_Color){130, 194, 255, 255};
     t.card = (SDL_Color){20, 35, 62, 210};
@@ -94,33 +161,32 @@ static Theme choose_theme(const WeatherData *w) {
     t.text = (SDL_Color){241, 247, 255, 255};
     t.muted = (SDL_Color){187, 209, 235, 255};
 
-    if (contains_ci(condition, "thunder") || contains_ci(condition, "storm")) {
+    if (mappedKind == THEME_STORM) {
         t.kind = THEME_STORM;
         t.top = (SDL_Color){16, 20, 38, 255};
         t.bottom = (SDL_Color){53, 66, 95, 255};
         t.card = (SDL_Color){10, 14, 26, 220};
         t.accent = (SDL_Color){255, 218, 99, 255};
-    } else if (contains_ci(condition, "rain") || contains_ci(condition, "drizzle")) {
+    } else if (mappedKind == THEME_RAIN) {
         t.kind = THEME_RAIN;
         t.top = (SDL_Color){25, 52, 82, 255};
         t.bottom = (SDL_Color){67, 111, 156, 255};
         t.card = (SDL_Color){16, 33, 55, 220};
         t.accent = (SDL_Color){111, 201, 255, 255};
-    } else if (contains_ci(condition, "snow") || contains_ci(condition, "blizzard")) {
+    } else if (mappedKind == THEME_SNOW) {
         t.kind = THEME_SNOW;
         t.top = (SDL_Color){156, 178, 207, 255};
         t.bottom = (SDL_Color){219, 234, 250, 255};
         t.card = (SDL_Color){56, 80, 115, 210};
         t.accent = (SDL_Color){245, 250, 255, 255};
         t.text = (SDL_Color){248, 252, 255, 255};
-    } else if (contains_ci(condition, "cloud") || contains_ci(condition, "overcast")) {
+    } else if (mappedKind == THEME_CLOUDY) {
         t.kind = THEME_CLOUDY;
         t.top = (SDL_Color){91, 109, 130, 255};
         t.bottom = (SDL_Color){154, 171, 189, 255};
         t.card = (SDL_Color){43, 55, 70, 215};
         t.accent = (SDL_Color){205, 221, 235, 255};
-    } else if (contains_ci(condition, "mist") || contains_ci(condition, "fog") ||
-               contains_ci(condition, "haze")) {
+    } else if (mappedKind == THEME_MIST) {
         t.kind = THEME_MIST;
         t.top = (SDL_Color){89, 109, 123, 255};
         t.bottom = (SDL_Color){160, 177, 188, 255};
@@ -132,6 +198,23 @@ static Theme choose_theme(const WeatherData *w) {
         t.bottom = (SDL_Color){39, 56, 104, 255};
         t.card = (SDL_Color){7, 11, 31, 220};
         t.accent = (SDL_Color){247, 222, 132, 255};
+    }
+
+    /* WeatherAPI gives local-day info in current.is_day; use it so clear nights are not shown as sunny day themes. */
+    if (isNight && t.kind == THEME_CLEAR) {
+        t.kind = THEME_NIGHT;
+        t.top = (SDL_Color){12, 18, 48, 255};
+        t.bottom = (SDL_Color){39, 56, 104, 255};
+        t.card = (SDL_Color){7, 11, 31, 220};
+        t.accent = (SDL_Color){247, 222, 132, 255};
+    }
+
+    if (isNight && t.kind != THEME_NIGHT) {
+        t.top = shade_color(t.top, 0.52f);
+        t.bottom = shade_color(t.bottom, 0.62f);
+        t.card = shade_color(t.card, 0.75f);
+        t.accent = shade_color(t.accent, 0.86f);
+        t.muted = shade_color(t.muted, 0.90f);
     }
 
     return t;
@@ -222,16 +305,31 @@ static void draw_weather_fx(SDL_Renderer *renderer, const Theme *theme, int w, i
         int cx = w - 120;
         int cy = 90;
         int r = 36 + (int)(3.0f * sinf(timeSec * 2.2f));
-        SDL_Color sun = theme->accent;
-        draw_filled_circle(renderer, cx, cy, r, sun);
-        SDL_SetRenderDrawColor(renderer, sun.r, sun.g, sun.b, 180);
-        for (i = 0; i < 10; i++) {
-            float a = timeSec * 0.9f + (float)i * 0.628f;
-            int x1 = cx + (int)(cosf(a) * (r + 12));
-            int y1 = cy + (int)(sinf(a) * (r + 12));
-            int x2 = cx + (int)(cosf(a) * (r + 26));
-            int y2 = cy + (int)(sinf(a) * (r + 26));
-            SDL_RenderDrawLine(renderer, x1, y1, x2, y2);
+        SDL_Color body = theme->accent;
+        if (theme->isNightVisual) {
+            SDL_Color moonShadow = shade_color(theme->top, 0.7f);
+            int sx;
+            int sy;
+            draw_filled_circle(renderer, cx, cy, r, body);
+            draw_filled_circle(renderer, cx + 12, cy - 5, r - 4, moonShadow);
+            for (i = 0; i < 36; i++) {
+                sx = (int)fmodf((float)(i * 97) + timeSec * 8.0f, (float)w);
+                sy = (int)fmodf((float)(i * 53) + timeSec * 3.0f, (float)(h / 2));
+                SDL_SetRenderDrawColor(renderer, 240, 242, 255,
+                                       (Uint8)(110 + ((i % 4) * 30)));
+                SDL_RenderDrawPoint(renderer, sx, sy);
+            }
+        } else {
+            draw_filled_circle(renderer, cx, cy, r, body);
+            SDL_SetRenderDrawColor(renderer, body.r, body.g, body.b, 180);
+            for (i = 0; i < 10; i++) {
+                float a = timeSec * 0.9f + (float)i * 0.628f;
+                int x1 = cx + (int)(cosf(a) * (r + 12));
+                int y1 = cy + (int)(sinf(a) * (r + 12));
+                int x2 = cx + (int)(cosf(a) * (r + 26));
+                int y2 = cy + (int)(sinf(a) * (r + 26));
+                SDL_RenderDrawLine(renderer, x1, y1, x2, y2);
+            }
         }
     }
 
@@ -323,12 +421,16 @@ static int fetch_weather(const char *city, WeatherData *w) {
     cJSON *temp;
     cJSON *humidity;
     cJSON *wind;
+    cJSON *isDay;
     cJSON *conditionObj;
     cJSON *conditionText;
+    cJSON *conditionCode;
     size_t i;
     size_t size;
 
     w->valid = 0;
+    w->isDay = 1;
+    w->conditionCode = 1000;
     w->error[0] = '\0';
 
     if (city == NULL || city[0] == '\0') {
@@ -375,12 +477,16 @@ static int fetch_weather(const char *city, WeatherData *w) {
     temp = current ? cJSON_GetObjectItemCaseSensitive(current, "temp_c") : NULL;
     humidity = current ? cJSON_GetObjectItemCaseSensitive(current, "humidity") : NULL;
     wind = current ? cJSON_GetObjectItemCaseSensitive(current, "wind_kph") : NULL;
+    isDay = current ? cJSON_GetObjectItemCaseSensitive(current, "is_day") : NULL;
     conditionObj = current ? cJSON_GetObjectItemCaseSensitive(current, "condition") : NULL;
     conditionText =
         conditionObj ? cJSON_GetObjectItemCaseSensitive(conditionObj, "text") : NULL;
+    conditionCode =
+        conditionObj ? cJSON_GetObjectItemCaseSensitive(conditionObj, "code") : NULL;
 
     if (!cJSON_IsNumber(temp) || !cJSON_IsNumber(humidity) || !cJSON_IsNumber(wind) ||
-        !cJSON_IsString(conditionText)) {
+        !cJSON_IsNumber(isDay) || !cJSON_IsString(conditionText) ||
+        !cJSON_IsNumber(conditionCode)) {
         cJSON_Delete(json);
         snprintf(w->error, sizeof(w->error), "Unexpected API response format.");
         return 0;
@@ -389,6 +495,8 @@ static int fetch_weather(const char *city, WeatherData *w) {
     w->tempC = temp->valuedouble;
     w->humidity = humidity->valueint;
     w->windKph = wind->valuedouble;
+    w->isDay = isDay->valueint;
+    w->conditionCode = conditionCode->valueint;
     snprintf(w->condition, sizeof(w->condition), "%s", conditionText->valuestring);
     w->valid = 1;
 
