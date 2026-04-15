@@ -13,7 +13,7 @@ The project demonstrates API handling, JSON parsing, and basic GUI integration i
 *  Displays temperature
 *  Shows humidity
 *  Parses JSON data using cJSON library
-*  Simple GUI interface (Windows API)
+*  Cross-platform animated GUI (SDL2)
 
 
 
@@ -22,7 +22,7 @@ The project demonstrates API handling, JSON parsing, and basic GUI integration i
 * C Programming Language
 * cJSON Library
 * Weather API
-* Windows API (for GUI)
+* SDL2 + SDL2_ttf (for GUI)
 
 ---
 
@@ -40,8 +40,8 @@ The project demonstrates API handling, JSON parsing, and basic GUI integration i
 
 ```
 WeatherApp/
-│── weather.c          # Main logic (API call + parsing)
-│── gui_weather.c      # GUI implementation
+│── weather.c          # Console app (API call + parsing)
+│── gui_weather.c      # Cross-platform SDL2 GUI
 │── cJSON.c / cJSON.h  # JSON parsing library
 │── weather.json       # API response file
 │── weather.exe        # Executable (optional)
@@ -51,19 +51,49 @@ WeatherApp/
 
 ##  How to Run
 
-1. Compile the code:
+1. Install dependencies:
+
+Linux (Debian/Ubuntu):
 
 ```
-gcc weather.c gui_weather.c cJSON.c -o weather.exe
+sudo apt update
+sudo apt install -y build-essential curl libsdl2-dev libsdl2-ttf-dev fonts-dejavu-core
 ```
 
-2. Run:
+Windows (MSYS2 MinGW64):
 
 ```
-./weather.exe
+pacman -Syu
+pacman -S --needed mingw-w64-x86_64-gcc mingw-w64-x86_64-SDL2 mingw-w64-x86_64-SDL2_ttf curl
 ```
 
-3. Enter city name when prompted
+2. Compile the console app:
+
+```
+gcc weather.c cJSON.c -o weather_console
+```
+
+3. Compile the GUI app:
+
+Linux:
+
+```
+gcc gui_weather.c cJSON.c -o weather_gui $(sdl2-config --cflags --libs) -lSDL2_ttf -lm
+```
+
+Windows (MSYS2 MinGW64 shell):
+
+```
+gcc gui_weather.c cJSON.c -o weather_gui.exe -IC:/msys64/mingw64/include/SDL2 -LC:/msys64/mingw64/lib -lmingw32 -lSDL2main -lSDL2 -lSDL2_ttf -lm
+```
+
+4. Run:
+
+```
+./weather_gui
+```
+
+5. Enter city name and press Enter or click **Fetch**
 
 ---
 
@@ -101,8 +131,7 @@ Displays:
 
 ##  Future Improvements
 
-* Add better GUI design
+* Add weekly forecast cards
 * Auto-detect location
-* Add forecast feature
-* Cross-platform support
+* Add hourly timeline animation
 

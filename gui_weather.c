@@ -404,6 +404,7 @@ static void draw_input_bar(SDL_Renderer *renderer, TTF_Font *font, int w, char *
     SDL_Color btn = theme->accent;
     SDL_Color btnText = {16, 24, 35, 255};
     char cityLabel[120];
+    SDL_Color cityColor = theme->text;
 
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
     SDL_SetRenderDrawColor(renderer, 10, 16, 28, 120);
@@ -416,8 +417,13 @@ static void draw_input_bar(SDL_Renderer *renderer, TTF_Font *font, int w, char *
 
     draw_text(renderer, font, "Fetch", buttonRect.x + 38, buttonRect.y + 13, btnText);
 
-    snprintf(cityLabel, sizeof(cityLabel), "City: %s", city);
-    draw_text(renderer, font, cityLabel, inputRect.x + 12, inputRect.y + 14, theme->text);
+    if (city[0] == '\0') {
+        snprintf(cityLabel, sizeof(cityLabel), "City: click here and type");
+        cityColor = theme->muted;
+    } else {
+        snprintf(cityLabel, sizeof(cityLabel), "City: %s", city);
+    }
+    draw_text(renderer, font, cityLabel, inputRect.x + 12, inputRect.y + 14, cityColor);
 }
 
 int main(void) {
@@ -431,7 +437,7 @@ int main(void) {
     SDL_Event event;
     int running = 1;
     int inputFocused = 1;
-    char city[INPUT_MAX] = "Jodhpur";
+    char city[INPUT_MAX] = "";
     int cityLen = (int)strlen(city);
     Uint32 now;
     float t;
@@ -521,6 +527,10 @@ int main(void) {
                     fetch_weather(city, &weather);
                 } else {
                     inputFocused = (mx >= 40 && mx <= w - 190 && my >= 26 && my <= 74);
+                    if (inputFocused && event.button.clicks >= 2) {
+                        city[0] = '\0';
+                        cityLen = 0;
+                    }
                 }
             } else if (event.type == SDL_TEXTINPUT && inputFocused) {
                 if (cityLen < INPUT_MAX - 1) {
@@ -534,6 +544,13 @@ int main(void) {
                 } else if (event.key.keysym.sym == SDLK_BACKSPACE && cityLen > 0 && inputFocused) {
                     city[cityLen - 1] = '\0';
                     cityLen--;
+                } else if (event.key.keysym.sym == SDLK_ESCAPE && inputFocused) {
+                    city[0] = '\0';
+                    cityLen = 0;
+                } else if (event.key.keysym.sym == SDLK_l && inputFocused &&
+                           (event.key.keysym.mod & KMOD_CTRL)) {
+                    city[0] = '\0';
+                    cityLen = 0;
                 }
             }
         }
@@ -584,7 +601,7 @@ int main(void) {
                   t * 2.0f + 3.1f);
 
         draw_text(renderer, fontSmall,
-                  "Tip: Press Enter or click Fetch after changing city",
+                  "Tip: Click city box and type. Enter/Fetch to load. Esc or Ctrl+L clears.",
                   44, h - 42, theme.muted);
 
         SDL_RenderPresent(renderer);
